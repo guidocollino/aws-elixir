@@ -2525,28 +2525,39 @@ defmodule AWS.IAM do
   end
 
   @spec request(map(), binary(), map(), list()) ::
-    {:ok, Poison.Parser.t | nil, Poison.Response.t} |
-    {:error, Poison.Parser.t} |
-    {:error, HTTPoison.Error.t}
+          {:ok, Poison.Parser.t() | nil, Poison.Response.t()}
+          | {:error, Poison.Parser.t()}
+          | {:error, HTTPoison.Error.t()}
   defp request(client, action, input, options) do
     client = %{client | service: "iam"}
+
+    query_params = [{"Action", action}, {"Version", "2010-05-08"}, {"UserName", "test"}]
     host = get_host("iam", client)
-    url = get_url(host, client)
-    headers = [{"Host", host},
-               {"Content-Type", "application/x-amz-json-"},
-               {"X-Amz-Target", ".#{action}"}]
+    url = get_url(host, client, query_params)
+
+    headers = [
+      {"Host", host},
+      {"Content-Type", "application/x-amz-json-1.1"},
+      {"X-Amz-Target", "iam_20100508.#{action}"}
+    ]
+
     payload = Poison.Encoder.encode(input, [])
-    headers = AWS.Request.sign_v4(client, "POST", url, headers, payload)
+    headers = AWS.Request.sign_v4_query(client, "POST", url, headers, payload)
+
     case HTTPoison.post(url, payload, headers, options) do
-      {:ok, response=%HTTPoison.Response{status_code: 200, body: ""}} ->
+      {:ok, response = %HTTPoison.Response{status_code: 200, body: ""}} ->
         {:ok, nil, response}
-      {:ok, response=%HTTPoison.Response{status_code: 200, body: body}} ->
+
+      {:ok, response = %HTTPoison.Response{status_code: 200, body: body}} ->
         {:ok, Poison.Parser.parse!(body), response}
-      {:ok, _response=%HTTPoison.Response{body: body}} ->
-        error = Poison.Parser.parse!(body)
-        exception = error["__type"]
-        message = error["message"]
-        {:error, {exception, message}}
+
+      {:ok, response = %HTTPoison.Response{body: body}} ->
+        IO.inspect(response)
+        # error = ""
+        # exception = error["__type"]
+        # message = error["message"]
+        {:error, {"", ""}}
+
       {:error, %HTTPoison.Error{reason: reason}} ->
         {:error, %HTTPoison.Error{reason: reason}}
     end
@@ -2556,12 +2567,15 @@ defmodule AWS.IAM do
     if client.region == "local" do
       "localhost"
     else
-      "#{endpoint_prefix}.#{client.region}.#{client.endpoint}"
+      "#{endpoint_prefix}.#{client.endpoint}"
     end
   end
 
-  defp get_url(host, %{:proto => proto, :port => port}) do
-    "#{proto}://#{host}:#{port}/"
-  end
+  defp get_url(host, %{:proto => proto}, query_params) do
+    uri =
+      URI.parse(host)
+      |> Map.put(:query, URI.encode_query(query_params))
 
+    "#{proto}://#{uri}"
+  end
 end
